@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"net/http"
 	"time"
+	"strings"
 
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/sessions"
@@ -54,10 +55,10 @@ type IDPConfig struct {
 
 // Identity Provider helper
 type IDP struct {
-	config *IDPConfig
-
 	// Communication with Hydra
-	hc *hydra.Client
+	HC *hydra.Client
+
+	config *IDPConfig
 
 	// Http client for communicating with Hydra
 	client *http.Client
@@ -147,7 +148,7 @@ func (idp *IDP) refreshCache(key string) {
 // Downloads the hydra's public key
 func (idp *IDP) downloadVerificationKey() (*rsa.PublicKey, error) {
 
-	jwk, err := idp.hc.JSONWebKeys.GetKey(hoauth2.ConsentChallengeKey, "public")
+	jwk, err := idp.HC.JSONWebKeys.GetKey(hoauth2.ConsentChallengeKey, "public")
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (idp *IDP) downloadVerificationKey() (*rsa.PublicKey, error) {
 
 // Downloads the private key used for signing the consent
 func (idp *IDP) downloadConsentKey() (*rsa.PrivateKey, error) {
-	jwk, err := idp.hc.JSONWebKeys.GetKey(hoauth2.ConsentEndpointKey, "private")
+	jwk, err := idp.HC.JSONWebKeys.GetKey(hoauth2.ConsentEndpointKey, "private")
 	if err != nil {
 		return nil, err
 	}
@@ -179,13 +180,13 @@ func (idp *IDP) downloadConsentKey() (*rsa.PrivateKey, error) {
 func (idp *IDP) Connect(verifyTLS bool) error {
 	var err error
 	if verifyTLS {
-		idp.hc, err = hydra.Connect(
+		idp.HC, err = hydra.Connect(
 			hydra.ClientID(idp.config.ClientID),
 			hydra.ClientSecret(idp.config.ClientSecret),
 			hydra.ClusterURL(idp.config.ClusterURL),
 		)
 	} else {
-		idp.hc, err = hydra.Connect(
+		idp.HC, err = hydra.Connect(
 			hydra.ClientID(idp.config.ClientID),
 			hydra.ClientSecret(idp.config.ClientSecret),
 			hydra.ClusterURL(idp.config.ClusterURL),
@@ -271,7 +272,7 @@ func (idp *IDP) getClient(clientID string) (*hclient.Client, error) {
 		return nil, ErrorNoSuchClient
 	}
 
-	client, err := idp.hc.Clients.GetClient(clientID)
+	client, err := idp.HC.Clients.GetClient(clientID)
 	if err != nil {
 		// Either the client isn't registered in hydra, or maybe hydra is
 		// having some problem. Either way, ensure we don't hit hydra again
@@ -315,7 +316,7 @@ func (idp *IDP) NewChallenge(r *http.Request, user string) (challenge *Challenge
 		return nil, err
 	}
 
-	challenge.Redirect = claims["redir"].(string)
+	challenge.Redirect = strings.Replace(claims["redir"].(string), "http://", "https://", -1)
 	challenge.JTI = claims["jti"].(string)
 	challenge.User = user
 	challenge.idp = idp
